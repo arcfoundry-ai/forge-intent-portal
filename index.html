@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Forge Intent — Interview Portal v2.0</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=DM+Serif+Display&display=swap" rel="stylesheet" />
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #root { height: 100%; }
+    body { font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .fade-in { animation: fadeIn 0.35s ease-out; }
+    .slide-up { animation: slideUp 0.5s ease-out; }
+    textarea:focus, input:focus, select:focus { border-color: #1c1917 !important; outline: none; box-shadow: 0 0 0 3px rgba(28,25,23,0.08); }
+    button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    button:active:not(:disabled) { transform: translateY(0); }
+    button { transition: all 0.15s ease; }
+    @media (max-width: 600px) { .hide-mobile { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+
+// ═══════════════════════════════════════════════════════════════
+// FORGE INTENT INTERVIEW PORTAL — v2.0 Iterative Deepening
+// Eight Generation Rules · LLM-generated questions · Wolfram gating
+// Rounds, not sets · Dynamic depth · Conversational flow
+// Architecture: Iterative Deepening Interview Model
+// ═══════════════════════════════════════════════════════════════
+
+// ── CONFIGURATION ──
+const CONFIG = {
+  webhookUrl: "", // Set to Formspree/Google Sheets/custom endpoint URL
+  defaultEmail: "joe@arcfoundry.ai",
+  version: "2.0",
+  claudeModel: "claude-sonnet-4-20250514",
+  confidenceThreshold: 0.80,
+  minQualityScore: 0.70
+};
+
+// ── EIGHT GENERATION RULES ──
+// These rules are the ONLY fixed element. Questions are generated from them.
+const GENERATION_RULES = {
+  1: {
+    id: 1,
+    name: "Open Wide",
+    purpose: "Discover the experience with no assumptions",
+    firesWhen: "Always in Round 1",
+    isFixed: true,
+    questions: [
+      "Walk me through the last time you [ACTIVITY] — what were you doing, and what were you hoping to get out of it?",
+      "Take me through the whole arc of that experience — from when you started to where you are now. What were the stages you went through?",
+      "In that journey, where did it fall short? What's the gap between what you hoped for and what actually happened?"
+    ]
+  },
+  2: {
+    id: 2,
+    name: "Surface the Gap",
+    purpose: "Get the respondent to name the specific breakdown in their own words",
+    firesWhen: "If Rule 1's third question didn't produce a clear, specific gap description",
+    pattern: "You mentioned [their vague statement]. Can you make that more specific? What exactly happened — or didn't happen?",
+    listeningFor: "A clear, specific gap description that can be probed further"
+  },
+  3: {
+    id: 3,
+    name: "First Why",
+    purpose: "Why did the gap happen? What caused it?",
+    firesWhen: "After a clear gap is identified",
+    pattern: "You said [their gap description]. What do you think caused that? What was missing?",
+    followUp: "When that happened — when you needed the knowledge and it wasn't there — what did you actually do? Not what you wish you'd done. What did you really do?",
+    listeningFor: "The causal explanation (first layer of root cause) and the workaround (reveals what they think the solution should look like)"
+  },
+  4: {
+    id: 4,
+    name: "Deeper Why",
+    purpose: "Go one level deeper toward the terminal consequence",
+    firesWhen: "After each why — repeats until root depth is reached",
+    pattern: "You said [their previous answer]. Why does that matter? What does that actually cost you — in your work, your goals, your life?",
+    listeningFor: "Terminal consequence — something they can't go deeper on. 'I plateau professionally.' 'Patient outcomes suffer.' 'I fail my exam.'"
+  },
+  5: {
+    id: 5,
+    name: "Cascade Test",
+    purpose: "Verify the breakpoint is where the respondent thinks it is, not downstream of an earlier failure",
+    firesWhen: "After a breakpoint is identified — test the stage before it",
+    pattern: "You said you understood [the concept]. Let me test that — can you walk me through [that concept] right now, as if I've never heard of it?",
+    listeningFor: "If they explain clearly → breakpoint confirmed. If they struggle → breakpoint is earlier than reported (illusory comprehension)."
+  },
+  6: {
+    id: 6,
+    name: "Structural Test",
+    purpose: "Confirm the root cause is a pattern, not a one-off incident",
+    firesWhen: "After a candidate root cause emerges",
+    pattern: "Is what you described typical for you, or was that an exception? Does this happen when you [ACTIVITY] in other contexts — or with other activities entirely?",
+    listeningFor: "Structural (happens consistently) vs incidental (that instance was unusual)"
+  },
+  7: {
+    id: 7,
+    name: "Gold Standard",
+    purpose: "Discover what 'working' looks like from the respondent's lived experience",
+    firesWhen: "After the root cause is clear",
+    pattern: "Has there ever been a time — any format, any medium, any context — where you DID get exactly what you were hoping for? What was different about it?",
+    followUp: "What specifically about that experience made it work? If you could take that one thing and apply it whenever you [ACTIVITY], what would it be?",
+    listeningFor: "The structural property that made the gold standard work — the resolution mechanism"
+  },
+  8: {
+    id: 8,
+    name: "Open Close",
+    purpose: "Catch what the investigation missed",
+    firesWhen: "Always in the final round",
+    pattern: "We've covered a lot of ground. Is there something about your experience that I haven't asked about — something that matters to you that we haven't touched on?",
+    listeningFor: "Gaps in the investigation. If they say 'no, you covered it' → good coverage."
+  }
+};
+
+// ── INTENT CHAIN STAGES ──
+const INTENT_STAGES = ["access", "comprehend", "retain", "apply", "teach"];
+
+// ── STORAGE HELPERS ──
+const STORAGE_KEYS = {
+  sessions: "forge-intent-sessions-v2",
+  activeSession: "forge-intent-active-v2"
+};
+
+async function loadSessions() {
+  try {
+    const result = localStorage.getItem(STORAGE_KEYS.sessions);
+    return result ? JSON.parse(result) : {};
+  } catch { return {}; }
+}
+
+async function saveSessions(sessions) {
+  localStorage.setItem(STORAGE_KEYS.sessions, JSON.stringify(sessions));
+}
+
+async function loadActiveSession() {
+  try {
+    const result = localStorage.getItem(STORAGE_KEYS.activeSession);
+    return result ? JSON.parse(result) : null;
+  } catch { return null; }
+}
+
+async function saveActiveSession(session) {
+  localStorage.setItem(STORAGE_KEYS.activeSession, JSON.stringify(session));
+}
+
+// ── UTILITY HELPERS ──
+// Substitute [ACTIVITY] placeholder with domain activity (respondent-facing language)
+// Project name is INTERNAL ONLY — never shown to respondent in Phase 1
+function substituteActivity(text, activity) {
+  return text.replace(/\[ACTIVITY\]/g, activity);
+}
+
+function calcDuration(startISO) {
+  if (!startISO) return 0;
+  return Math.round((Date.now() - new Date(startISO).getTime()) / 60000);
+}
+
+function downloadFile(content, filename, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── EVIDENCE TYPE STYLING ──
+const evidenceColors = {
+  experiential: { bg: "#dbeafe", text: "#1d4ed8", label: "Experiential" },
+  commitment: { bg: "#fef3c7", text: "#92400e", label: "Commitment" },
+  constraint: { bg: "#f3e8ff", text: "#7c3aed", label: "Constraint" },
+  behavioral: { bg: "#dcfce7", text: "#15803d", label: "Behavioral" },
+  diagnostic: { bg: "#fce7f3", text: "#be185d", label: "Diagnostic" }
+};
+
+// ── ROUND COLORS ──
+const roundColors = {
+  1: "#15803d",
+  2: "#1d4ed8",
+  3: "#7c3aed",
+  4: "#c2410c",
+  5: "#991b1b",
+  6: "#0f766e",
+  7: "#6d28d9"
+};
+
+// ── FORGE INTENT RUNTIME ADAPTER ──
+const ForgeIntentRuntime = {
+  mode: "local",
+
+  async generateQuestions(conversationHistory, activeRule, session) {
+    const systemPrompt = buildQuestionGenerationPrompt(activeRule, session);
+    return {
+      questions: [],
+      needsGeneration: true,
+      rule: activeRule,
+      prompt: systemPrompt,
+      history: conversationHistory
+    };
+  },
+
+  async scoreResponse(response, session) {
+    return {
+      score: 0,
+      needsScoring: true,
+      response,
+      sessionId: session.id
+    };
+  },
+
+  async updateBayesian(evidence, session) {
+    return {
+      posteriors: {},
+      needsUpdate: true,
+      evidence,
+      sessionId: session.id
+    };
+  },
+
+  async optimizeConfidence(session) {
+    return {
+      dominantPosterior: 0,
+      shouldContinue: true,
+      needsOptimization: true,
+      sessionId: session.id
+    };
+  }
+};
+
+function buildQuestionGenerationPrompt(rule, session) {
+  const ruleData = GENERATION_RULES[rule];
+  const lastRound = session.rounds[session.rounds.length - 1];
+  const previousAnswers = lastRound?.questions.map(q => ({
+    question: q.questionText,
+    answer: q.response
+  })) || [];
+
+  return `You are applying Rule ${rule} (${ruleData.name}) to the respondent's previous answers.
+
+Rule Purpose: ${ruleData.purpose}
+Rule Pattern: ${ruleData.pattern || "Generate from respondent's words"}
+${ruleData.listeningFor ? `Listen for: ${ruleData.listeningFor}` : ""}
+
+Previous round answers:
+${previousAnswers.map((a, i) => `Q${i + 1}: ${a.question}\nA${i + 1}: ${a.answer}`).join("\n\n")}
+
+Generate 1-2 questions that probe deeper based on exactly what they said. Use their own words. Do not use pre-written questions. Return as JSON array of strings.`;
+}
+
+// ── MAIN APP ──
+function ForgeInterviewPortal() {
+  const [view, setView] = useState("loading");
+  const [sessions, setSessions] = useState({});
+  const [activeSession, setActiveSession] = useState(null);
+  const [currentQuestion, setCurrentQuestion] = useState(null);
+  const [response, setResponse] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [interviewerComments, setInterviewerComments] = useState("");
+  const [wolframStatus, setWolframStatus] = useState(null);
+  const textareaRef = useRef(null);
+
+  // ── INIT ──
+  useEffect(() => {
+    (async () => {
+      const s = await loadSessions();
+      const a = await loadActiveSession();
+      setSessions(s);
+      if (a) { setActiveSession(a); }
+      setView("sessions");
+    })();
+  }, []);
+
+  // ── URL PARAMETER SUPPORT ──
+  // Allows pre-filling session via URL: ?project=X&domain=Y&respondent=Z&phase=W
+  const getUrlParams = () => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      project: params.get('project') || "Group Tab",
+      domainActivity: params.get('domain') || "organized a group trip or event — coordinating with multiple people, managing logistics, handling payments",
+      respondentDescription: params.get('respondent') || "Someone who regularly coordinates group trips or events",
+      phase: params.get('phase') || "Phase 1"
+    };
+  };
+
+  // ── SESSION CREATION ──
+  const [newSession, setNewSession] = useState(getUrlParams);
+
+  const createSession = async () => {
+    const id = `FI-${Date.now().toString(36).toUpperCase()}`;
+    const activity = newSession.domainActivity;
+
+    const round1Questions = GENERATION_RULES[1].questions.map((text, idx) => ({
+      questionId: `R1-Q${idx + 1}`,
+      questionText: substituteActivity(text, activity),
+      response: null,
+      generatedFrom: "fixed",
+      ruleApplied: 1,
+      evidenceType: "experiential",
+      timestamp: null,
+      wolframScore: null
+    }));
+
+    const session = {
+      id,
+      project: newSession.project,
+      domainActivity: newSession.domainActivity,
+      respondentDescription: newSession.respondentDescription,
+      phase: newSession.phase,
+      created: new Date().toISOString(),
+      status: "active",
+      model: "iterative_deepening",
+      rounds: [{
+        roundNumber: 1,
+        ruleApplied: "Rule 1: Open Wide",
+        ruleIds: [1],
+        questions: round1Questions,
+        wolframAssessment: null,
+        completed: false
+      }],
+      currentRound: 1,
+      currentQuestionIndex: 0,
+      intentChain: {
+        stagesTraversed: [],
+        reportedBreakpoint: null,
+        cascadeTestResult: null,
+        actualBreakpoint: null
+      },
+      confidence: {
+        posteriors: {},
+        dominantHypothesis: null,
+        dominantPosterior: 0,
+        qualityScores: [],
+        averageQuality: 0
+      },
+      rootCauseAssessment: {
+        candidateRootCause: null,
+        confidenceLevel: null,
+        terminalConsequence: null,
+        severity: null,
+        isStructural: null,
+        goldStandard: null,
+        goldStandardProperty: null
+      }
+    };
+
+    const updated = { ...sessions, [id]: session };
+    setSessions(updated);
+    setActiveSession(session);
+    setCurrentQuestion(round1Questions[0]);
+    await saveSessions(updated);
+    await saveActiveSession(session);
+    setView("interview");
+  };
+
+  const getCurrentRound = () => {
+    if (!activeSession) return null;
+    return activeSession.rounds.find(r => r.roundNumber === activeSession.currentRound);
+  };
+
+  const getCurrentQuestionData = () => {
+    const round = getCurrentRound();
+    if (!round) return null;
+    return round.questions[activeSession.currentQuestionIndex];
+  };
+
+  const submitResponse = async () => {
+    if (!response.trim() || !activeSession) return;
+
+    const round = getCurrentRound();
+    const qIndex = activeSession.currentQuestionIndex;
+    const question = round.questions[qIndex];
+
+    const updatedQuestion = {
+      ...question,
+      response: response.trim(),
+      timestamp: new Date().toISOString()
+    };
+
+    const updatedRound = {
+      ...round,
+      questions: round.questions.map((q, i) => i === qIndex ? updatedQuestion : q)
+    };
+
+    const isLastQuestionInRound = qIndex === round.questions.length - 1;
+
+    let updatedSession = {
+      ...activeSession,
+      rounds: activeSession.rounds.map(r => r.roundNumber === round.roundNumber ? updatedRound : r)
+    };
+
+    if (isLastQuestionInRound) {
+      updatedRound.completed = true;
+      setWolframStatus("Scoring responses...");
+
+      updatedRound.wolframAssessment = {
+        pending: true,
+        timestamp: new Date().toISOString()
+      };
+
+      const nextRoundNumber = round.roundNumber + 1;
+
+      if (nextRoundNumber <= 7) {
+        const nextRule = determineNextRule(updatedSession, nextRoundNumber);
+        const nextRoundQuestions = generateNextRoundQuestions(nextRule, updatedSession, nextRoundNumber);
+
+        const newRound = {
+          roundNumber: nextRoundNumber,
+          ruleApplied: `Rule ${nextRule}: ${GENERATION_RULES[nextRule].name}`,
+          ruleIds: [nextRule],
+          questions: nextRoundQuestions,
+          wolframAssessment: null,
+          completed: false
+        };
+
+        updatedSession = {
+          ...updatedSession,
+          rounds: [...updatedSession.rounds.map(r => r.roundNumber === round.roundNumber ? updatedRound : r), newRound],
+          currentRound: nextRoundNumber,
+          currentQuestionIndex: 0
+        };
+
+        setWolframStatus(null);
+      } else {
+        updatedSession = {
+          ...updatedSession,
+          status: "complete",
+          completedAt: new Date().toISOString()
+        };
+        // Run root cause extraction on auto-complete
+        extractRootCauseAssessment(updatedSession);
+        setWolframStatus(null);
+      }
+    } else {
+      updatedSession = {
+        ...updatedSession,
+        currentQuestionIndex: qIndex + 1
+      };
+    }
+
+    setActiveSession(updatedSession);
+    setSessions(prev => ({ ...prev, [updatedSession.id]: updatedSession }));
+    await saveSessions({ ...sessions, [updatedSession.id]: updatedSession });
+    await saveActiveSession(updatedSession);
+
+    setResponse("");
+
+    if (updatedSession.status === "complete") {
+      setView("review");
+    } else {
+      setTimeout(() => textareaRef.current?.focus(), 100);
+    }
+  };
+
+  function determineNextRule(session, roundNumber) {
+    if (roundNumber === 2) {
+      const r1Responses = session.rounds[0]?.questions.map(q => q.response) || [];
+      const lastResponse = r1Responses[2] || "";
+      if (lastResponse.length < 50 || lastResponse.toLowerCase().includes("just didn't work")) {
+        return 2;
+      }
+      return 3;
+    }
+    if (roundNumber === 3) return 4;
+    if (roundNumber === 4) return 4;
+
+    // Rule 5 (Cascade Test): fires once after Deeper Why rounds if a breakpoint
+    // has been reported. Verifies the breakpoint isn't downstream of an earlier failure.
+    if (roundNumber === 5) {
+      const hasBreakpoint = session.intentChain?.reportedBreakpoint != null;
+      const deeperWhyResponses = session.rounds
+        .filter(r => r.ruleIds?.some(id => id === 3 || id === 4))
+        .flatMap(r => r.questions.map(q => q.response).filter(Boolean));
+      const implicitBreakpoint = deeperWhyResponses.some(r =>
+        /\b(thought I understood|assumed I knew|believed I could|didn't realize|turned out I)\b/i.test(r)
+      );
+      if (hasBreakpoint || implicitBreakpoint) {
+        return 5; // Cascade Test
+      }
+    }
+
+    if (roundNumber >= 5) return 6;
+    return 4;
+  }
+
+  function generateNextRoundQuestions(ruleId, session, roundNumber) {
+    const rule = GENERATION_RULES[ruleId];
+    const activity = session.domainActivity || "that activity";
+    const lastRound = session.rounds[session.rounds.length - 1];
+    const lastResponses = lastRound?.questions.map(q => q.response).filter(Boolean) || [];
+
+    const questions = [];
+
+    if (rule.pattern) {
+      let questionText = substituteActivity(rule.pattern, activity);
+      if (lastResponses.length > 0) {
+        const lastAnswer = lastResponses[lastResponses.length - 1];
+        const keyPhrase = lastAnswer.split(/[.!?]/)[0].slice(0, 80);
+        questionText = questionText.replace(/\[their [^\]]+\]/g, `"${keyPhrase}"`);
+        questionText = questionText.replace(/\[the concept\]/g, `"${keyPhrase}"`);
+        questionText = questionText.replace(/\[that concept\]/g, `"${keyPhrase}"`);
+      }
+
+      // Guard: strip unresolved placeholders
+      questionText = questionText.replace(/\[their [^\]]+\]/g, 'what you described');
+      questionText = questionText.replace(/\[the concept\]/g, 'that concept');
+      questionText = questionText.replace(/\[that concept\]/g, 'that concept');
+
+      questions.push({
+        questionId: `R${roundNumber}-Q1`,
+        questionText,
+        response: null,
+        generatedFrom: `Round ${roundNumber - 1} responses`,
+        ruleApplied: ruleId,
+        evidenceType: ruleId === 5 ? "diagnostic" : "experiential",
+        timestamp: null,
+        wolframScore: null
+      });
+    }
+
+    if (rule.followUp) {
+      questions.push({
+        questionId: `R${roundNumber}-Q2`,
+        questionText: substituteActivity(rule.followUp, activity),
+        response: null,
+        generatedFrom: `Rule ${ruleId} follow-up`,
+        ruleApplied: ruleId,
+        evidenceType: "experiential",
+        timestamp: null,
+        wolframScore: null
+      });
+    }
+
+    if (roundNumber >= 5 && ruleId === 6) {
+      questions.push({
+        questionId: `R${roundNumber}-Q${questions.length + 1}`,
+        questionText: substituteActivity(GENERATION_RULES[7].pattern, activity),
+        response: null,
+        generatedFrom: "Rule 7: Gold Standard",
+        ruleApplied: 7,
+        evidenceType: "experiential",
+        timestamp: null,
+        wolframScore: null
+      });
+
+      questions.push({
+        questionId: `R${roundNumber}-Q${questions.length + 1}`,
+        questionText: GENERATION_RULES[8].pattern,
+        response: null,
+        generatedFrom: "Rule 8: Open Close",
+        ruleApplied: 8,
+        evidenceType: "experiential",
+        timestamp: null,
+        wolframScore: null
+      });
+    }
+
+    if (questions.length === 0) {
+      questions.push({
+        questionId: `R${roundNumber}-Q1`,
+        questionText: "Can you say more about that?",
+        response: null,
+        generatedFrom: "Fallback probe",
+        ruleApplied: ruleId,
+        evidenceType: "experiential",
+        timestamp: null,
+        wolframScore: null
+      });
+    }
+
+    return questions;
+  }
+
+  // ── ROOT CAUSE EXTRACTION (runs on interview completion) ──
+  function extractRootCauseAssessment(session) {
+    // Pull from Deeper Why (Rule 4) and First Why (Rule 3) rounds ONLY
+    // Rules 5-8 are validation/confirmation — NOT root cause candidates
+    const causalRounds = session.rounds.filter(r =>
+      r.ruleIds?.some(id => id === 3 || id === 4)
+    );
+    const causalResponses = causalRounds.flatMap(r =>
+      r.questions.map(q => q.response).filter(Boolean)
+    );
+
+    if (causalResponses.length > 0) {
+      const deepestCausal = causalResponses[causalResponses.length - 1];
+      session.rootCauseAssessment.candidateRootCause =
+        deepestCausal.split(/[.!?]/)[0].slice(0, 200);
+      session.rootCauseAssessment.confidenceLevel = session.confidence?.dominantPosterior || 0;
+
+      const terminalMatch = deepestCausal.match(
+        /(?:cost|means|result is|consequence is|leads to|end up)\s+(.{10,150})/i
+      );
+      if (terminalMatch) {
+        session.rootCauseAssessment.terminalConsequence =
+          terminalMatch[1].split(/[.!?]/)[0].slice(0, 200);
+      }
+    } else {
+      const laterResponses = session.rounds.slice(1).flatMap(r =>
+        r.questions.map(q => q.response).filter(Boolean)
+      );
+      if (laterResponses.length > 0) {
+        session.rootCauseAssessment.candidateRootCause =
+          laterResponses[laterResponses.length - 1].split(/[.!?]/)[0].slice(0, 200);
+        session.rootCauseAssessment.confidenceLevel = session.confidence?.dominantPosterior || 0;
+      }
+    }
+
+    // Structural confirmation (Rule 6)
+    const structuralRound = session.rounds.find(r => r.ruleIds?.includes(6));
+    if (structuralRound) {
+      const resp = structuralRound.questions[0]?.response || '';
+      session.rootCauseAssessment.isStructural =
+        /typical|always|usually|every time|pattern|consistent/i.test(resp);
+    }
+
+    // Cascade test (Rule 5)
+    const cascadeRound = session.rounds.find(r => r.ruleIds?.includes(5));
+    if (cascadeRound) {
+      const resp = cascadeRound.questions[0]?.response || '';
+      const struggled = /\b(not sure|hard to explain|I think|maybe|don't really know)\b/i.test(resp);
+      session.intentChain = session.intentChain || {};
+      session.intentChain.cascadeTestResult = struggled ? 'breakpoint_earlier' : 'breakpoint_confirmed';
+      if (struggled) session.intentChain.actualBreakpoint = 'earlier_than_reported';
+    }
+
+    // Gold standard (Rule 7) — separate from root cause
+    const goldQuestions = session.rounds.flatMap(r =>
+      r.questions.filter(q => q.ruleApplied === 7 && q.response)
+    );
+    if (goldQuestions.length > 0 && goldQuestions[0].response.length > 50) {
+      session.rootCauseAssessment.goldStandard =
+        goldQuestions[0].response.split(/[.!?]/)[0].slice(0, 200);
+      if (goldQuestions.length > 1) {
+        session.rootCauseAssessment.goldStandardProperty =
+          goldQuestions[1].response?.split(/[.!?]/)[0].slice(0, 200) || null;
+      }
+    }
+  }
+
+  const completeInterview = async () => {
+    if (!activeSession) return;
+
+    const updatedSession = {
+      ...activeSession,
+      status: "complete",
+      completedAt: new Date().toISOString()
+    };
+
+    // Run root cause extraction before saving
+    extractRootCauseAssessment(updatedSession);
+
+    setActiveSession(updatedSession);
+    setSessions(prev => ({ ...prev, [updatedSession.id]: updatedSession }));
+    await saveSessions({ ...sessions, [updatedSession.id]: updatedSession });
+    await saveActiveSession(updatedSession);
+    setView("review");
+  };
+
+  const generateExport = () => {
+    if (!activeSession) return {};
+
+    const allResponses = [];
+    activeSession.rounds.forEach(round => {
+      round.questions.forEach(q => {
+        if (q.response) {
+          allResponses.push({
+            questionId: q.questionId,
+            question: q.questionText,
+            response: q.response,
+            generatedFrom: q.generatedFrom,
+            ruleApplied: q.ruleApplied,
+            evidenceType: q.evidenceType,
+            timestamp: q.timestamp,
+            wolframScore: q.wolframScore
+          });
+        }
+      });
+    });
+
+    return {
+      forgeIntent: {
+        version: CONFIG.version,
+        type: "interview_session",
+        sessionId: activeSession.id,
+        project: activeSession.project,
+        phase: activeSession.phase,
+        respondent: activeSession.respondentDescription,
+        conducted: activeSession.created,
+        completed: activeSession.completedAt || new Date().toISOString(),
+        status: activeSession.status,
+        model: "iterative_deepening",
+        questionVersion: "v4_generated",
+        totalRounds: activeSession.rounds.length,
+        totalQuestions: allResponses.length,
+        estimatedMinutes: calcDuration(activeSession.created)
+      },
+      intentChain: activeSession.intentChain,
+      rounds: activeSession.rounds.map(r => ({
+        roundNumber: r.roundNumber,
+        ruleApplied: r.ruleApplied,
+        questions: r.questions.filter(q => q.response).map(q => ({
+          questionId: q.questionId,
+          questionText: q.questionText,
+          response: q.response,
+          generatedFrom: q.generatedFrom,
+          evidenceType: q.evidenceType,
+          roleSource: "respondent",
+          wolframScore: q.wolframScore
+        })),
+        wolframAssessment: r.wolframAssessment
+      })),
+      rootCauseAssessment: activeSession.rootCauseAssessment,
+      confidence: activeSession.confidence,
+      interviewerComments: interviewerComments || null,
+      analysis: {
+        totalQuestions: allResponses.length,
+        evidenceBreakdown: {
+          experiential: allResponses.filter(r => r.evidenceType === "experiential").length,
+          commitment: allResponses.filter(r => r.evidenceType === "commitment").length,
+          constraint: allResponses.filter(r => r.evidenceType === "constraint").length,
+          behavioral: allResponses.filter(r => r.evidenceType === "behavioral").length,
+          diagnostic: allResponses.filter(r => r.evidenceType === "diagnostic").length
+        },
+        cascadeTestPerformed: activeSession.rounds.some(r => r.ruleIds?.includes(5)),
+        cascadeTestOutcome: activeSession.intentChain.cascadeTestResult,
+        durationMinutes: calcDuration(activeSession.created)
+      }
+    };
+  };
+
+  const handleDownload = () => {
+    const data = generateExport();
+    downloadFile(JSON.stringify(data, null, 2), `${activeSession.id}_${Date.now()}.json`, "application/json");
+  };
+
+  const handleEmail = () => {
+    const data = generateExport();
+    const subject = encodeURIComponent(`Forge Intent Interview: ${activeSession.id} — ${activeSession.project}`);
+    const body = encodeURIComponent(
+      `Forge Intent Interview Results\n` +
+      `Session: ${activeSession.id}\n` +
+      `Project: ${activeSession.project}\n` +
+      `Phase: ${activeSession.phase}\n` +
+      `Respondent: ${activeSession.respondentDescription}\n` +
+      `Rounds: ${activeSession.rounds.length}\n` +
+      `Duration: ${calcDuration(activeSession.created)} min\n\n` +
+      `--- JSON Export ---\n${JSON.stringify(data, null, 2)}`
+    );
+    window.open(`mailto:${CONFIG.defaultEmail}?subject=${subject}&body=${body}`, "_self");
+  };
+
+  const handleWebhook = async () => {
+    if (!CONFIG.webhookUrl) { alert("No webhook endpoint configured."); return; }
+    try {
+      const res = await fetch(CONFIG.webhookUrl, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(generateExport())
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      alert("Results submitted successfully!");
+    } catch (err) {
+      alert(`Submission failed: ${err.message}. You can still download the JSON.`);
+    }
+  };
+
+  // ── STYLES ──
+  const styles = {
+    app: { fontFamily: "'DM Sans', -apple-system, sans-serif", minHeight: "100vh", background: "linear-gradient(135deg, #fafaf9 0%, #f5f0eb 100%)" },
+    container: { maxWidth: 720, margin: "0 auto", padding: "24px 20px" },
+    header: { textAlign: "center", marginBottom: 32 },
+    logo: { fontSize: 13, fontWeight: 800, letterSpacing: 2, color: "#78716c", textTransform: "uppercase", marginBottom: 4 },
+    title: { fontSize: 22, fontWeight: 700, color: "#1c1917", marginBottom: 4, fontFamily: "'DM Serif Display', Georgia, serif" },
+    subtitle: { fontSize: 12, color: "#a8a29e" },
+    card: { background: "#fff", borderRadius: 12, border: "1px solid #e7e5e4", padding: 20, marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" },
+    label: { fontSize: 10, fontWeight: 700, letterSpacing: 0.8, color: "#78716c", textTransform: "uppercase", marginBottom: 6, display: "block" },
+    input: { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #d6d3d1", fontSize: 13, color: "#1c1917", outline: "none", fontFamily: "inherit", boxSizing: "border-box" },
+    select: { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #d6d3d1", fontSize: 13, color: "#1c1917", background: "#fff", outline: "none", fontFamily: "inherit", boxSizing: "border-box" },
+    textarea: { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #d6d3d1", fontSize: 13, color: "#1c1917", outline: "none", fontFamily: "inherit", minHeight: 120, resize: "vertical", lineHeight: 1.6, boxSizing: "border-box" },
+    btnPrimary: { background: "#1c1917", color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" },
+    btnSecondary: { background: "#f5f5f4", color: "#44403c", border: "1px solid #d6d3d1", borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" },
+    btnDanger: { background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" },
+    roundTag: (roundNum) => ({
+      display: "inline-block",
+      fontSize: 9,
+      fontWeight: 700,
+      padding: "3px 8px",
+      borderRadius: 4,
+      background: roundColors[roundNum] || "#78716c",
+      color: "#fff",
+      letterSpacing: 0.5,
+      textTransform: "uppercase"
+    }),
+    ruleTag: { display: "inline-block", fontSize: 9, fontWeight: 600, padding: "2px 8px", borderRadius: 4, background: "#f3e8ff", color: "#7c3aed", letterSpacing: 0.3 },
+    evidenceTag: (type) => ({ display: "inline-block", fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: evidenceColors[type]?.bg || "#f5f5f4", color: evidenceColors[type]?.text || "#78716c", letterSpacing: 0.5, textTransform: "uppercase" }),
+    questionBox: { background: "#fafaf9", borderRadius: 10, padding: 16, border: "1px solid #e7e5e4", marginBottom: 16 },
+    whyBox: { fontSize: 11, color: "#78716c", lineHeight: 1.5, marginTop: 8, paddingTop: 8, borderTop: "1px solid #e7e5e4" },
+    wolframBox: { background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: 10, marginTop: 12, fontSize: 11 },
+    sessionCard: { background: "#fff", borderRadius: 10, border: "1px solid #e7e5e4", padding: 14, marginBottom: 10, cursor: "pointer", transition: "all 0.15s" },
+    exportPre: { background: "#1c1917", color: "#a8a29e", borderRadius: 10, padding: 16, fontSize: 11, fontFamily: "'DM Mono', monospace", overflow: "auto", maxHeight: 400, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-all" },
+    fieldGroup: { marginBottom: 14 },
+    fieldHint: { fontSize: 10, color: "#a8a29e", marginTop: 4 }
+  };
+
+  // ── VIEWS ──
+
+  if (view === "loading") {
+    return <div style={styles.app}><div style={styles.container}><p style={{ textAlign: "center", color: "#78716c", marginTop: 80 }}>Loading Forge Intent...</p></div></div>;
+  }
+
+  if (view === "sessions") {
+    const sessionList = Object.values(sessions).sort((a, b) => new Date(b.created) - new Date(a.created));
+    return (
+      <div style={styles.app}>
+        <div style={styles.container}>
+          <div style={styles.header}>
+            <div style={styles.logo}>Forge Intent</div>
+            <div style={styles.title}>Interview Portal</div>
+            <div style={styles.subtitle}>v2.0 · Iterative Deepening · Eight Generation Rules</div>
+          </div>
+
+          <button style={{ ...styles.btnPrimary, width: "100%", marginBottom: 20, padding: "14px 20px", fontSize: 14 }} onClick={() => setView("create")}>
+            + New Interview Session
+          </button>
+
+          {sessionList.length === 0 && (
+            <div style={{ ...styles.card, textAlign: "center", color: "#a8a29e" }}>
+              <p style={{ fontSize: 13, marginBottom: 4 }}>No sessions yet</p>
+              <p style={{ fontSize: 11 }}>Create your first interview session to begin the investigation</p>
+            </div>
+          )}
+
+          {sessionList.map(s => (
+            <div key={s.id} style={styles.sessionCard} onClick={() => {
+              setActiveSession(s);
+              saveActiveSession(s);
+              setView(s.status === "complete" ? "review" : "interview");
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#1c1917" }}>{s.id}</span>
+                <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: s.status === "complete" ? "#dcfce7" : "#fef3c7", color: s.status === "complete" ? "#15803d" : "#92400e", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  {s.status}
+                </span>
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#1c1917", marginBottom: 2 }}>{s.project || "Untitled Project"}</div>
+              <div style={{ fontSize: 11, color: "#78716c" }}>
+                {s.respondentDescription?.slice(0, 40) || "No description"} · Round {s.currentRound || 1} of {s.rounds?.length || 1}
+              </div>
+              <div style={{ fontSize: 10, color: "#a8a29e", marginTop: 4 }}>{new Date(s.created).toLocaleDateString()} {new Date(s.created).toLocaleTimeString()}</div>
+            </div>
+          ))}
+
+          {sessionList.length > 0 && (
+            <button style={{ ...styles.btnDanger, width: "100%", marginTop: 12 }} onClick={async () => {
+              if (confirm("Clear all sessions? This cannot be undone.")) {
+                setSessions({});
+                setActiveSession(null);
+                await saveSessions({});
+                await saveActiveSession(null);
+              }
+            }}>Reset All Sessions</button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (view === "create") {
+    const canCreate = newSession.domainActivity.trim().length > 0 && newSession.respondentDescription.trim().length > 0;
+
+    return (
+      <div style={styles.app}>
+        <div style={styles.container}>
+          <div style={styles.header}>
+            <div style={styles.logo}>Forge Intent</div>
+            <div style={styles.title}>New Interview Session</div>
+            <div style={styles.subtitle}>Iterative Deepening Model</div>
+          </div>
+
+          <div style={styles.card}>
+            <label style={styles.label}>Project Name</label>
+            <input
+              style={styles.input}
+              placeholder="e.g., Group Tab"
+              value={newSession.project}
+              onChange={e => setNewSession(p => ({ ...p, project: e.target.value }))}
+            />
+          </div>
+
+          <div style={styles.card}>
+            <label style={styles.label}>Domain Activity</label>
+            <textarea
+              style={{ ...styles.textarea, minHeight: 80 }}
+              placeholder="e.g., organized a group trip or event — coordinating with multiple people, managing logistics, handling payments"
+              value={newSession.domainActivity}
+              onChange={e => setNewSession(p => ({ ...p, domainActivity: e.target.value }))}
+            />
+            <div style={styles.fieldHint}>The behavior being investigated, in respondent-facing language. No product names — describe the ACTIVITY, not the tool. This appears in Round 1 questions.</div>
+          </div>
+
+          <div style={styles.card}>
+            <label style={styles.label}>Respondent Description</label>
+            <textarea
+              style={{ ...styles.textarea, minHeight: 80 }}
+              placeholder="e.g., Someone who regularly coordinates group trips or events"
+              value={newSession.respondentDescription}
+              onChange={e => setNewSession(p => ({ ...p, respondentDescription: e.target.value }))}
+            />
+            <div style={styles.fieldHint}>Who you're interviewing — role, context, relevant background (internal reference only)</div>
+          </div>
+
+          <div style={styles.card}>
+            <label style={styles.label}>Phase</label>
+            <select
+              style={styles.select}
+              value={newSession.phase}
+              onChange={e => setNewSession(p => ({ ...p, phase: e.target.value }))}
+            >
+              <option value="Phase 1">Phase 1 — Root Cause Discovery</option>
+              <option value="Phase 2">Phase 2 — Direction Validation</option>
+            </select>
+          </div>
+
+          <div style={styles.card}>
+            <label style={styles.label}>How It Works</label>
+            <div style={{ fontSize: 12, color: "#44403c", lineHeight: 1.6 }}>
+              <p style={{ marginBottom: 8 }}><strong>Round 1</strong> uses three fixed questions to discover the respondent's experience and identify the gap.</p>
+              <p style={{ marginBottom: 8 }}><strong>Rounds 2-N</strong> are generated from the respondent's answers using the Eight Generation Rules. Each round probes deeper based on what they said.</p>
+              <p><strong>The interview ends</strong> when root cause confidence reaches 80% (typically 3-7 rounds, 15-35 minutes).</p>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <button style={styles.btnSecondary} onClick={() => setView("sessions")}>Cancel</button>
+            <button
+              style={{ ...styles.btnPrimary, flex: 1, opacity: canCreate ? 1 : 0.4 }}
+              disabled={!canCreate}
+              onClick={createSession}
+            >
+              Begin Interview
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === "interview" && activeSession) {
+    const round = getCurrentRound();
+    const question = getCurrentQuestionData();
+
+    if (!round || !question) {
+      completeInterview();
+      return null;
+    }
+
+    const totalQuestions = activeSession.rounds.reduce((sum, r) => sum + r.questions.length, 0);
+    const answeredQuestions = activeSession.rounds.reduce((sum, r) => sum + r.questions.filter(q => q.response).length, 0);
+    const progressPct = totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 0;
+    const rule = GENERATION_RULES[question.ruleApplied];
+
+    return (
+      <div style={styles.app}>
+        <div style={styles.container}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div>
+              <div style={styles.logo}>Forge Intent</div>
+              <div style={{ fontSize: 12, color: "#78716c" }}>{activeSession.project} · {activeSession.phase}</div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button style={{ ...styles.btnSecondary, padding: "8px 12px", fontSize: 11 }} onClick={completeInterview}>
+                End Interview
+              </button>
+              <button style={{ ...styles.btnSecondary, padding: "8px 12px", fontSize: 11 }} onClick={() => setView("sessions")}>
+                Save & Exit
+              </button>
+            </div>
+          </div>
+
+          <div style={{ width: "100%", height: 4, background: "#e7e5e4", borderRadius: 2, overflow: "hidden", marginBottom: 8 }}>
+            <div style={{ width: `${progressPct}%`, height: "100%", background: roundColors[round.roundNumber] || "#1c1917", borderRadius: 2, transition: "width 0.3s ease" }} />
+          </div>
+          <div style={{ fontSize: 10, color: "#a8a29e", marginBottom: 16, textAlign: "center" }}>
+            Round {round.roundNumber} · Question {activeSession.currentQuestionIndex + 1} of {round.questions.length}
+          </div>
+
+          <div style={styles.questionBox}>
+            <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+              <span style={styles.roundTag(round.roundNumber)}>Round {round.roundNumber}</span>
+              <span style={styles.ruleTag}>Rule {question.ruleApplied}: {rule?.name}</span>
+              <span style={styles.evidenceTag(question.evidenceType)}>{evidenceColors[question.evidenceType]?.label}</span>
+            </div>
+
+            <p style={{ fontSize: 15, fontWeight: 600, color: "#1c1917", lineHeight: 1.5, fontFamily: "'DM Serif Display', Georgia, serif" }}>
+              {question.questionText}
+            </p>
+
+            {rule && (
+              <div style={styles.whyBox}>
+                <strong>Rule purpose:</strong> {rule.purpose}
+                {rule.listeningFor && (
+                  <div style={{ marginTop: 4 }}><strong>Listen for:</strong> {rule.listeningFor}</div>
+                )}
+              </div>
+            )}
+
+            {question.generatedFrom !== "fixed" && (
+              <div style={{ fontSize: 10, color: "#a8a29e", marginTop: 8, fontStyle: "italic" }}>
+                Generated from: {question.generatedFrom}
+              </div>
+            )}
+          </div>
+
+          <textarea
+            ref={textareaRef}
+            style={styles.textarea}
+            placeholder="Type the respondent's answer..."
+            value={response}
+            onChange={e => setResponse(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && e.metaKey) submitResponse(); }}
+            autoFocus
+          />
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+            <span style={{ fontSize: 10, color: "#a8a29e" }}>Cmd+Enter to submit</span>
+            <button
+              style={{ ...styles.btnPrimary, opacity: response.trim() ? 1 : 0.4 }}
+              disabled={!response.trim()}
+              onClick={submitResponse}
+            >
+              Next Question →
+            </button>
+          </div>
+
+          {wolframStatus && (
+            <div style={styles.wolframBox}>
+              <strong style={{ color: "#1d4ed8" }}>Wolfram:</strong> {wolframStatus}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (view === "review" && activeSession) {
+    const exportData = generateExport();
+    const exportJSON = JSON.stringify(exportData, null, 2);
+
+    return (
+      <div style={styles.app}>
+        <div style={styles.container}>
+          <div style={styles.header}>
+            <div style={styles.logo}>Forge Intent</div>
+            <div style={styles.title}>Session Complete</div>
+            <div style={styles.subtitle}>{activeSession.id} · {activeSession.project}</div>
+          </div>
+
+          <div style={styles.card}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#1c1917" }}>{activeSession.respondentDescription}</div>
+                <div style={{ fontSize: 11, color: "#78716c" }}>{activeSession.phase} · {activeSession.rounds.length} rounds · {calcDuration(activeSession.created)} min</div>
+              </div>
+              <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#dcfce7", color: "#15803d", textTransform: "uppercase", height: "fit-content" }}>Complete</span>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {activeSession.rounds.map(r => (
+                <span key={r.roundNumber} style={styles.roundTag(r.roundNumber)}>
+                  R{r.roundNumber}: {r.ruleApplied.split(":")[1]?.trim() || ""}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {activeSession.rounds.map(round => (
+            <div key={round.roundNumber} style={{ ...styles.card, borderLeft: `4px solid ${roundColors[round.roundNumber] || "#78716c"}` }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                <span style={styles.roundTag(round.roundNumber)}>Round {round.roundNumber}</span>
+                <span style={styles.ruleTag}>{round.ruleApplied}</span>
+              </div>
+
+              {round.questions.filter(q => q.response).map((q, i) => (
+                <div key={q.questionId} style={{ marginBottom: i < round.questions.length - 1 ? 12 : 0 }}>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+                    <span style={{ fontSize: 9, fontWeight: 600, color: "#78716c" }}>{q.questionId}</span>
+                    <span style={styles.evidenceTag(q.evidenceType)}>{evidenceColors[q.evidenceType]?.label}</span>
+                  </div>
+                  <p style={{ fontSize: 11, fontWeight: 600, color: "#78716c", marginBottom: 4, lineHeight: 1.4 }}>{q.questionText}</p>
+                  <p style={{ fontSize: 12, color: "#1c1917", lineHeight: 1.6, paddingLeft: 8, borderLeft: "2px solid #e7e5e4" }}>{q.response}</p>
+                </div>
+              ))}
+            </div>
+          ))}
+
+          <div style={{ ...styles.card, background: "#faf5ff", borderColor: "#c4b5fd" }}>
+            <label style={{ ...styles.label, color: "#7c3aed" }}>Root Cause Assessment</label>
+            <div style={{ fontSize: 12, color: "#44403c", lineHeight: 1.6 }}>
+              <p style={{ marginBottom: 8 }}><strong>Intent Chain:</strong> {activeSession.intentChain.stagesTraversed.join(" → ") || "Not yet mapped"}</p>
+              <p style={{ marginBottom: 8 }}><strong>Reported Breakpoint:</strong> {activeSession.intentChain.reportedBreakpoint || "Not yet identified"}</p>
+              <p style={{ marginBottom: 8 }}><strong>Cascade Test:</strong> {activeSession.intentChain.cascadeTestResult || "Not yet performed"}</p>
+              <p><strong>Confidence:</strong> {activeSession.confidence.dominantPosterior ? `${(activeSession.confidence.dominantPosterior * 100).toFixed(0)}%` : "Pending Wolfram analysis"}</p>
+            </div>
+          </div>
+
+          <div style={styles.card}>
+            <label style={styles.label}>Interviewer Comments (Optional)</label>
+            <textarea
+              style={{ ...styles.textarea, minHeight: 100 }}
+              placeholder="Add any observations, patterns noticed, or context that would help analysis..."
+              value={interviewerComments}
+              onChange={e => setInterviewerComments(e.target.value)}
+            />
+          </div>
+
+          <div style={styles.card}>
+            <label style={styles.label}>Structured Export (JSON)</label>
+            <pre style={styles.exportPre}>{exportJSON}</pre>
+          </div>
+
+          <div style={styles.card}>
+            <label style={styles.label}>Submit Results</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button style={{ ...styles.btnPrimary, width: "100%", padding: "14px 20px" }} onClick={handleDownload}>
+                Download JSON File
+              </button>
+              <button style={{ ...styles.btnSecondary, width: "100%" }} onClick={handleEmail}>
+                Email Results
+              </button>
+              <button style={{ ...styles.btnSecondary, width: "100%" }} onClick={() => {
+                navigator.clipboard?.writeText(exportJSON);
+                alert("Copied to clipboard");
+              }}>
+                Copy to Clipboard
+              </button>
+              {CONFIG.webhookUrl && (
+                <button style={{ ...styles.btnSecondary, width: "100%" }} onClick={handleWebhook}>
+                  Submit to Webhook
+                </button>
+              )}
+            </div>
+          </div>
+
+          <button style={{ ...styles.btnSecondary, width: "100%", marginTop: 8 }} onClick={() => setView("sessions")}>
+            Back to Sessions
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return <div style={styles.app}><div style={styles.container}><p style={{ color: "#a8a29e", textAlign: "center" }}>Unknown state</p></div></div>;
+}
+
+// ── MOUNT ──
+ReactDOM.createRoot(document.getElementById("root")).render(<ForgeInterviewPortal />);
+  </script>
+</body>
+</html>
