@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Forge Intent — Admin Portal</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -15,7 +15,7 @@
       color: #fafaf9;
       padding: 40px 20px;
     }
-    .container { max-width: 800px; margin: 0 auto; }
+    .container { max-width: 900px; margin: 0 auto; }
     h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
     .subtitle { color: #a8a29e; margin-bottom: 40px; }
 
@@ -48,24 +48,30 @@
     textarea { resize: vertical; min-height: 80px; }
 
     .btn {
-      padding: 12px 24px;
+      padding: 10px 18px;
       border: none;
       border-radius: 8px;
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
-    .btn-primary {
-      background: #22c55e;
-      color: #fff;
-    }
-    .btn-primary:hover { background: #16a34a; transform: translateY(-1px); }
-    .btn-secondary {
-      background: #44403c;
-      color: #fafaf9;
-    }
-    .btn-secondary:hover { background: #57534e; }
+    .btn:hover:not(:disabled) { transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: #22c55e; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #16a34a; }
+    .btn-secondary { background: #44403c; color: #fafaf9; }
+    .btn-secondary:hover:not(:disabled) { background: #57534e; }
+    .btn-blue { background: #3b82f6; color: #fff; }
+    .btn-blue:hover:not(:disabled) { background: #2563eb; }
+    .btn-purple { background: #8b5cf6; color: #fff; }
+    .btn-purple:hover:not(:disabled) { background: #7c3aed; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+    .btn-danger { background: #dc2626; color: #fff; }
+    .btn-danger:hover:not(:disabled) { background: #b91c1c; }
 
     .link-output {
       background: #1c1917;
@@ -80,6 +86,7 @@
     .link-box {
       display: flex;
       gap: 8px;
+      margin-bottom: 12px;
     }
     .link-box input {
       flex: 1;
@@ -87,7 +94,64 @@
       font-family: 'DM Mono', monospace;
       font-size: 13px;
     }
-    .copied-toast {
+
+    /* Action buttons grid */
+    .action-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    /* Saved links with checkboxes */
+    .saved-links-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .batch-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .saved-links { margin-top: 12px; }
+    .saved-link {
+      display: flex;
+      align-items: center;
+      padding: 12px;
+      background: #1c1917;
+      border: 1px solid #44403c;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      transition: all 0.15s;
+    }
+    .saved-link:hover { border-color: #57534e; }
+    .saved-link.selected { border-color: #22c55e; background: #22c55e08; }
+    .saved-link-checkbox {
+      width: 18px;
+      height: 18px;
+      margin-right: 12px;
+      accent-color: #22c55e;
+      cursor: pointer;
+    }
+    .saved-link-info { flex: 1; min-width: 0; }
+    .saved-link-company { font-weight: 600; font-size: 14px; }
+    .saved-link-domain { font-size: 12px; color: #a8a29e; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .saved-link-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #78716c;
+    }
+
+    .row { display: flex; gap: 16px; }
+    .row .form-group { flex: 1; }
+
+    /* Toast */
+    .toast {
       position: fixed;
       bottom: 20px;
       right: 20px;
@@ -99,49 +163,44 @@
       opacity: 0;
       transform: translateY(10px);
       transition: all 0.2s ease;
+      z-index: 1000;
     }
-    .copied-toast.show { opacity: 1; transform: translateY(0); }
+    .toast.show { opacity: 1; transform: translateY(0); }
 
-    .saved-links { margin-top: 12px; }
-    .saved-link {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px;
-      background: #1c1917;
-      border: 1px solid #44403c;
-      border-radius: 8px;
-      margin-bottom: 8px;
-    }
-    .saved-link-info { flex: 1; }
-    .saved-link-company { font-weight: 600; font-size: 14px; }
-    .saved-link-domain { font-size: 12px; color: #a8a29e; margin-top: 2px; }
-    .saved-link-actions { display: flex; gap: 8px; }
-    .btn-sm {
-      padding: 6px 12px;
+    /* Selection count badge */
+    .selection-count {
+      background: #22c55e;
+      color: #fff;
+      padding: 4px 10px;
+      border-radius: 9999px;
       font-size: 12px;
-    }
-    .btn-danger { background: #dc2626; color: #fff; }
-    .btn-danger:hover { background: #b91c1c; }
-
-    .empty-state {
-      text-align: center;
-      padding: 40px;
-      color: #78716c;
+      font-weight: 600;
     }
 
-    .row { display: flex; gap: 16px; }
-    .row .form-group { flex: 1; }
+    /* Recipient input for mailto */
+    .recipient-input {
+      display: none;
+      margin-top: 12px;
+      padding: 12px;
+      background: #252525;
+      border-radius: 8px;
+    }
+    .recipient-input.active { display: block; }
+    .recipient-input label { color: #a8a29e; font-size: 12px; margin-bottom: 6px; }
+    .recipient-input input { margin-bottom: 8px; }
 
     @media (max-width: 600px) {
       .row { flex-direction: column; gap: 0; }
+      .saved-link { flex-direction: column; align-items: flex-start; gap: 12px; }
+      .saved-link-checkbox { position: absolute; top: 12px; right: 12px; }
+      .saved-link { position: relative; padding-right: 40px; }
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Forge Intent Admin</h1>
-    <p class="subtitle">Generate custom interview links for beta testers and clients</p>
+    <p class="subtitle">Generate and distribute interview links — 2 clicks to send</p>
 
     <div class="card">
       <h2>Create Interview Link</h2>
@@ -186,33 +245,58 @@
       </div>
 
       <button class="btn btn-primary" onclick="generateLink()">Generate Link</button>
-      <button class="btn btn-secondary" onclick="clearForm()" style="margin-left: 8px;">Clear Form</button>
+      <button class="btn btn-secondary" onclick="clearForm()" style="margin-left: 8px;">Clear</button>
 
       <div class="link-output" id="linkOutput">
         <label>Interview Link for <strong id="linkCompany"></strong></label>
         <div class="link-box">
           <input type="text" id="generatedLink" readonly />
-          <button class="btn btn-secondary" onclick="copyLink()">Copy</button>
+          <button class="btn btn-secondary" onclick="copyLink()">Copy URL</button>
         </div>
-        <div style="margin-top: 12px;">
-          <button class="btn btn-secondary btn-sm" onclick="saveLink()">Save to List</button>
-          <button class="btn btn-secondary btn-sm" onclick="openLink()">Open in New Tab</button>
+
+        <div class="action-grid">
+          <button class="btn btn-secondary btn-sm" onclick="saveLink()">💾 Save to List</button>
+          <button class="btn btn-secondary btn-sm" onclick="openLink()">↗ Open</button>
+          <button class="btn btn-purple btn-sm" onclick="copyAsMessage()">📋 Copy as Message</button>
+          <button class="btn btn-blue btn-sm" onclick="toggleRecipientInput()">✉️ Email Link</button>
+        </div>
+
+        <div class="recipient-input" id="recipientInput">
+          <label>Recipient Name (optional)</label>
+          <input type="text" id="recipientName" placeholder="e.g., Maria" />
+          <label>Recipient Email</label>
+          <input type="email" id="recipientEmail" placeholder="e.g., maria@example.com" />
+          <button class="btn btn-blue btn-sm" onclick="sendMailto()">Open in Email Client</button>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <h2>Saved Links</h2>
+      <div class="saved-links-header">
+        <h2 style="margin-bottom: 0;">Saved Links</h2>
+        <div class="batch-actions" id="batchActions" style="display: none;">
+          <span class="selection-count" id="selectionCount">0 selected</span>
+          <button class="btn btn-secondary btn-sm" onclick="selectAll()">Select All</button>
+          <button class="btn btn-secondary btn-sm" onclick="deselectAll()">Deselect</button>
+          <button class="btn btn-purple btn-sm" onclick="batchCopyMessages()">📋 Copy All Messages</button>
+          <button class="btn btn-blue btn-sm" onclick="batchMailto()">✉️ Email All</button>
+          <button class="btn btn-danger btn-sm" onclick="batchDelete()">🗑 Delete Selected</button>
+        </div>
+      </div>
       <div id="savedLinks" class="saved-links">
         <div class="empty-state">No saved links yet. Generate and save your first link above.</div>
       </div>
     </div>
   </div>
 
-  <div class="copied-toast" id="toast">Copied to clipboard!</div>
+  <div class="toast" id="toast">Copied to clipboard!</div>
 
   <script>
     const BASE_URL = 'https://arcfoundry-ai.github.io/forge-intent-portal/';
+
+    // ═══════════════════════════════════════════════════════════════
+    // FORM HANDLING
+    // ═══════════════════════════════════════════════════════════════
 
     function clearForm() {
       document.getElementById('company').value = '';
@@ -223,6 +307,7 @@
       document.getElementById('portal').selectedIndex = 0;
       document.getElementById('linkOutput').classList.remove('active');
       document.getElementById('generatedLink').value = '';
+      document.getElementById('recipientInput').classList.remove('active');
     }
 
     function generateLink() {
@@ -250,12 +335,13 @@
       document.getElementById('generatedLink').value = link;
       document.getElementById('linkCompany').textContent = company;
       document.getElementById('linkOutput').classList.add('active');
+      document.getElementById('recipientInput').classList.remove('active');
     }
 
     function copyLink() {
       const link = document.getElementById('generatedLink').value;
       navigator.clipboard.writeText(link).then(() => {
-        showToast('Copied to clipboard!');
+        showToast('URL copied!');
       });
     }
 
@@ -264,17 +350,88 @@
       window.open(link, '_blank');
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // COPY AS MESSAGE - Formatted template
+    // ═══════════════════════════════════════════════════════════════
+
+    function copyAsMessage(linkData = null) {
+      const data = linkData || {
+        company: document.getElementById('company').value.trim(),
+        project: document.getElementById('project').value.trim(),
+        domain: document.getElementById('domain').value.trim(),
+        link: document.getElementById('generatedLink').value
+      };
+
+      const message = generateMessage(data);
+      navigator.clipboard.writeText(message).then(() => {
+        showToast('Message copied! Paste into email/Slack/text');
+      });
+    }
+
+    function generateMessage(data, recipientName = '') {
+      const greeting = recipientName ? `Hi ${recipientName},` : 'Hi,';
+      return `${greeting}
+
+You've been invited to share your experience with ${data.project || data.company}.
+
+We're interested in hearing about times when you've ${data.domain}.
+
+This brief interview typically takes 10-15 minutes and will help us build better solutions.
+
+Click here to begin: ${data.link}
+
+Thanks for your time!`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // MAILTO - Email Link button
+    // ═══════════════════════════════════════════════════════════════
+
+    function toggleRecipientInput() {
+      const input = document.getElementById('recipientInput');
+      input.classList.toggle('active');
+      if (input.classList.contains('active')) {
+        document.getElementById('recipientName').focus();
+      }
+    }
+
+    function sendMailto(linkData = null, email = null, name = null) {
+      const data = linkData || {
+        company: document.getElementById('company').value.trim(),
+        project: document.getElementById('project').value.trim(),
+        domain: document.getElementById('domain').value.trim(),
+        link: document.getElementById('generatedLink').value
+      };
+
+      const recipientEmail = email || document.getElementById('recipientEmail').value.trim();
+      const recipientName = name || document.getElementById('recipientName').value.trim();
+
+      const subject = encodeURIComponent(`You're invited to share your experience — ${data.project || data.company}`);
+      const body = encodeURIComponent(generateMessage(data, recipientName));
+
+      const mailtoUrl = `mailto:${recipientEmail}?subject=${subject}&body=${body}`;
+      window.location.href = mailtoUrl;
+
+      showToast('Opening email client...');
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // SAVED LINKS WITH BATCH SELECTION
+    // ═══════════════════════════════════════════════════════════════
+
     function saveLink() {
       const company = document.getElementById('company').value.trim();
+      const project = document.getElementById('project').value.trim() || company;
       const link = document.getElementById('generatedLink').value;
       const domain = document.getElementById('domain').value.trim();
 
       if (!link) return;
 
       const saved = JSON.parse(localStorage.getItem('forgeLinks') || '[]');
-      saved.push({
+      saved.unshift({
         id: Date.now(),
         company,
+        project,
         domain,
         link,
         created: new Date().toISOString()
@@ -292,11 +449,105 @@
       renderSavedLinks();
     }
 
-    function copyFromSaved(link) {
-      navigator.clipboard.writeText(link).then(() => {
-        showToast('Copied to clipboard!');
+    function toggleSelection(id) {
+      const checkbox = document.querySelector(`input[data-id="${id}"]`);
+      const linkEl = checkbox.closest('.saved-link');
+      linkEl.classList.toggle('selected', checkbox.checked);
+      updateBatchActions();
+    }
+
+    function selectAll() {
+      document.querySelectorAll('.saved-link-checkbox').forEach(cb => {
+        cb.checked = true;
+        cb.closest('.saved-link').classList.add('selected');
+      });
+      updateBatchActions();
+    }
+
+    function deselectAll() {
+      document.querySelectorAll('.saved-link-checkbox').forEach(cb => {
+        cb.checked = false;
+        cb.closest('.saved-link').classList.remove('selected');
+      });
+      updateBatchActions();
+    }
+
+    function getSelectedLinks() {
+      const saved = JSON.parse(localStorage.getItem('forgeLinks') || '[]');
+      const selectedIds = Array.from(document.querySelectorAll('.saved-link-checkbox:checked'))
+        .map(cb => parseInt(cb.dataset.id));
+      return saved.filter(l => selectedIds.includes(l.id));
+    }
+
+    function updateBatchActions() {
+      const selected = document.querySelectorAll('.saved-link-checkbox:checked').length;
+      const batchActions = document.getElementById('batchActions');
+      const selectionCount = document.getElementById('selectionCount');
+
+      if (selected > 0) {
+        batchActions.style.display = 'flex';
+        selectionCount.textContent = `${selected} selected`;
+      } else {
+        batchActions.style.display = 'none';
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // BATCH OPERATIONS
+    // ═══════════════════════════════════════════════════════════════
+
+    function batchCopyMessages() {
+      const selected = getSelectedLinks();
+      if (selected.length === 0) return;
+
+      const messages = selected.map(l => {
+        return `--- ${l.company} ---\n${generateMessage(l)}`;
+      }).join('\n\n');
+
+      navigator.clipboard.writeText(messages).then(() => {
+        showToast(`${selected.length} messages copied!`);
       });
     }
+
+    function batchMailto() {
+      const selected = getSelectedLinks();
+      if (selected.length === 0) return;
+
+      if (selected.length === 1) {
+        // Single link - prompt for email
+        const email = prompt('Enter recipient email:');
+        if (email) {
+          sendMailto(selected[0], email);
+        }
+      } else {
+        // Multiple links - copy all messages for manual send
+        const messages = selected.map(l => {
+          return `To: [Enter email for ${l.company}]\nSubject: You're invited to share your experience — ${l.project || l.company}\n\n${generateMessage(l)}`;
+        }).join('\n\n========================================\n\n');
+
+        navigator.clipboard.writeText(messages).then(() => {
+          showToast(`${selected.length} email drafts copied! Paste into your email client.`);
+        });
+      }
+    }
+
+    function batchDelete() {
+      const selected = getSelectedLinks();
+      if (selected.length === 0) return;
+
+      if (confirm(`Delete ${selected.length} link(s)?`)) {
+        const saved = JSON.parse(localStorage.getItem('forgeLinks') || '[]');
+        const selectedIds = selected.map(l => l.id);
+        const filtered = saved.filter(l => !selectedIds.includes(l.id));
+        localStorage.setItem('forgeLinks', JSON.stringify(filtered));
+        renderSavedLinks();
+        showToast(`${selected.length} links deleted`);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // RENDER SAVED LINKS
+    // ═══════════════════════════════════════════════════════════════
 
     function renderSavedLinks() {
       const saved = JSON.parse(localStorage.getItem('forgeLinks') || '[]');
@@ -304,24 +555,65 @@
 
       if (saved.length === 0) {
         container.innerHTML = '<div class="empty-state">No saved links yet. Generate and save your first link above.</div>';
+        document.getElementById('batchActions').style.display = 'none';
         return;
       }
 
       container.innerHTML = saved.map(l => `
         <div class="saved-link">
+          <input type="checkbox" class="saved-link-checkbox" data-id="${l.id}" onchange="toggleSelection(${l.id})" />
           <div class="saved-link-info">
             <div class="saved-link-company">${escapeHtml(l.company)}</div>
-            <div class="saved-link-domain">${escapeHtml(l.domain.slice(0, 60))}${l.domain.length > 60 ? '...' : ''}</div>
+            <div class="saved-link-domain">${escapeHtml(l.domain.slice(0, 80))}${l.domain.length > 80 ? '...' : ''}</div>
           </div>
           <div class="saved-link-actions">
-            <button class="btn btn-secondary btn-sm" onclick="copyFromSaved('${escapeHtml(l.link)}')">Copy</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteLink(${l.id})">Delete</button>
+            <button class="btn btn-secondary btn-sm" onclick="copyFromSaved(${l.id})">Copy URL</button>
+            <button class="btn btn-purple btn-sm" onclick="copyMessageFromSaved(${l.id})">📋 Message</button>
+            <button class="btn btn-blue btn-sm" onclick="mailtoFromSaved(${l.id})">✉️ Email</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteLink(${l.id})">🗑</button>
           </div>
         </div>
       `).join('');
+
+      updateBatchActions();
     }
 
+    function copyFromSaved(id) {
+      const saved = JSON.parse(localStorage.getItem('forgeLinks') || '[]');
+      const link = saved.find(l => l.id === id);
+      if (link) {
+        navigator.clipboard.writeText(link.link).then(() => {
+          showToast('URL copied!');
+        });
+      }
+    }
+
+    function copyMessageFromSaved(id) {
+      const saved = JSON.parse(localStorage.getItem('forgeLinks') || '[]');
+      const link = saved.find(l => l.id === id);
+      if (link) {
+        copyAsMessage(link);
+      }
+    }
+
+    function mailtoFromSaved(id) {
+      const saved = JSON.parse(localStorage.getItem('forgeLinks') || '[]');
+      const link = saved.find(l => l.id === id);
+      if (link) {
+        const email = prompt('Enter recipient email:');
+        if (email) {
+          const name = prompt('Recipient name (optional):') || '';
+          sendMailto(link, email, name);
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // UTILITIES
+    // ═══════════════════════════════════════════════════════════════
+
     function escapeHtml(str) {
+      if (!str) return '';
       return str.replace(/[&<>"']/g, c => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
       }[c]));
@@ -331,7 +623,7 @@
       const toast = document.getElementById('toast');
       toast.textContent = message;
       toast.classList.add('show');
-      setTimeout(() => toast.classList.remove('show'), 2000);
+      setTimeout(() => toast.classList.remove('show'), 2500);
     }
 
     // Load saved links on page load
