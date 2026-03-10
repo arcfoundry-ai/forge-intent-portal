@@ -235,6 +235,16 @@
     .status-badge.in-progress { background: #8b5cf620; color: #8b5cf6; }
     .status-badge.completed { background: #22c55e20; color: #22c55e; }
 
+    /* Timestamp cells */
+    .timestamp-cell {
+      font-size: 12px;
+      color: #a8a29e;
+      white-space: nowrap;
+    }
+    .timestamp-empty {
+      color: #57534e;
+    }
+
     /* Action buttons */
     .action-buttons {
       display: flex;
@@ -589,6 +599,8 @@ Thanks for your time!`;
               <th>Project</th>
               <th style="text-align: center;">Progress</th>
               <th>Status</th>
+              <th>Received</th>
+              <th>Processed</th>
               <th style="text-align: right;">Actions</th>
             </tr>
           </thead>
@@ -622,6 +634,12 @@ Thanks for your time!`;
           </td>
           <td>
             <span class="status-badge ${link.status}">${getStatusLabel(link.status)}</span>
+          </td>
+          <td class="timestamp-cell">
+            ${link.openedAt ? formatTimestamp(link.openedAt) : '<span class="timestamp-empty">—</span>'}
+          </td>
+          <td class="timestamp-cell">
+            ${link.completedAt ? formatTimestamp(link.completedAt) : '<span class="timestamp-empty">—</span>'}
           </td>
           <td>
             <div class="action-buttons" style="justify-content: flex-end;">
@@ -686,6 +704,28 @@ Thanks for your time!`;
         'completed': 'Completed'
       };
       return map[status] || 'Sent';
+    }
+
+    function formatTimestamp(isoString) {
+      const date = new Date(isoString);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+      // Format time
+      const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+      if (diffDays === 0) {
+        return `Today, ${timeStr}`;
+      } else if (diffDays === 1) {
+        return `Yesterday, ${timeStr}`;
+      } else if (diffDays < 7) {
+        const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+        return `${dayName}, ${timeStr}`;
+      } else {
+        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return `${dateStr}, ${timeStr}`;
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════
