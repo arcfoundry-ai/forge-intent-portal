@@ -185,6 +185,7 @@
       </div>
 
       <button class="btn btn-primary" onclick="generateLink()">Generate Link</button>
+      <button class="btn btn-secondary" onclick="clearForm()" style="margin-left: 8px;">Clear Form</button>
 
       <div class="link-output" id="linkOutput">
         <label>Interview Link for <strong id="linkCompany"></strong></label>
@@ -211,6 +212,17 @@
 
   <script>
     const BASE_URL = 'https://arcfoundry-ai.github.io/forge-intent-portal/';
+
+    function clearForm() {
+      document.getElementById('company').value = '';
+      document.getElementById('project').value = '';
+      document.getElementById('domain').value = '';
+      document.getElementById('respondent').value = '';
+      document.getElementById('phase').selectedIndex = 0;
+      document.getElementById('portal').selectedIndex = 0;
+      document.getElementById('linkOutput').classList.remove('active');
+      document.getElementById('generatedLink').value = '';
+    }
 
     function generateLink() {
       const company = document.getElementById('company').value.trim();
