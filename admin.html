@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Forge Intent — Admin Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: linear-gradient(135deg, #1c1917 0%, #292524 100%);
+      min-height: 100vh;
+      color: #fafaf9;
+      padding: 40px 20px;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+    .subtitle { color: #a8a29e; margin-bottom: 40px; }
+
+    .card {
+      background: #292524;
+      border: 1px solid #44403c;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .card h2 { font-size: 18px; font-weight: 600; margin-bottom: 20px; color: #fafaf9; }
+
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-size: 13px; font-weight: 500; color: #a8a29e; margin-bottom: 6px; }
+    input, textarea, select {
+      width: 100%;
+      padding: 12px 14px;
+      background: #1c1917;
+      border: 1px solid #44403c;
+      border-radius: 8px;
+      color: #fafaf9;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: #22c55e;
+      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+    }
+    textarea { resize: vertical; min-height: 80px; }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-primary {
+      background: #22c55e;
+      color: #fff;
+    }
+    .btn-primary:hover { background: #16a34a; transform: translateY(-1px); }
+    .btn-secondary {
+      background: #44403c;
+      color: #fafaf9;
+    }
+    .btn-secondary:hover { background: #57534e; }
+
+    .link-output {
+      background: #1c1917;
+      border: 1px solid #44403c;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 20px;
+      display: none;
+    }
+    .link-output.active { display: block; }
+    .link-output label { margin-bottom: 8px; }
+    .link-box {
+      display: flex;
+      gap: 8px;
+    }
+    .link-box input {
+      flex: 1;
+      background: #292524;
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+    }
+    .copied-toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #22c55e;
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-weight: 500;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.2s ease;
+    }
+    .copied-toast.show { opacity: 1; transform: translateY(0); }
+
+    .saved-links { margin-top: 12px; }
+    .saved-link {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+      background: #1c1917;
+      border: 1px solid #44403c;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .saved-link-info { flex: 1; }
+    .saved-link-company { font-weight: 600; font-size: 14px; }
+    .saved-link-domain { font-size: 12px; color: #a8a29e; margin-top: 2px; }
+    .saved-link-actions { display: flex; gap: 8px; }
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+    .btn-danger { background: #dc2626; color: #fff; }
+    .btn-danger:hover { background: #b91c1c; }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #78716c;
+    }
+
+    .row { display: flex; gap: 16px; }
+    .row .form-group { flex: 1; }
+
+    @media (max-width: 600px) {
+      .row { flex-direction: column; gap: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Forge Intent Admin</h1>
+    <p class="subtitle">Generate custom interview links for beta testers and clients</p>
+
+    <div class="card">
+      <h2>Create Interview Link</h2>
+
+      <div class="row">
+        <div class="form-group">
+          <label for="company">Company / Client Name</label>
+          <input type="text" id="company" placeholder="e.g., Group Tab" />
+        </div>
+        <div class="form-group">
+          <label for="project">Project Name (Internal)</label>
+          <input type="text" id="project" placeholder="e.g., Group Tab Beta" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="domain">Domain Activity (What respondents do)</label>
+        <textarea id="domain" placeholder="e.g., organized a group trip or event — coordinating with multiple people, managing logistics, handling payments"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="respondent">Respondent Description</label>
+        <input type="text" id="respondent" placeholder="e.g., Someone who regularly coordinates group trips or events" />
+      </div>
+
+      <div class="row">
+        <div class="form-group">
+          <label for="phase">Phase</label>
+          <select id="phase">
+            <option value="Phase 1">Phase 1 - Discovery</option>
+            <option value="Phase 2">Phase 2 - Validation</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="portal">Portal Version</label>
+          <select id="portal">
+            <option value="index.html">Track A (Default)</option>
+            <option value="trackb.html">Track B (IVB)</option>
+          </select>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" onclick="generateLink()">Generate Link</button>
+
+      <div class="link-output" id="linkOutput">
+        <label>Interview Link for <strong id="linkCompany"></strong></label>
+        <div class="link-box">
+          <input type="text" id="generatedLink" readonly />
+          <button class="btn btn-secondary" onclick="copyLink()">Copy</button>
+        </div>
+        <div style="margin-top: 12px;">
+          <button class="btn btn-secondary btn-sm" onclick="saveLink()">Save to List</button>
+          <button class="btn btn-secondary btn-sm" onclick="openLink()">Open in New Tab</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Saved Links</h2>
+      <div id="savedLinks" class="saved-links">
+        <div class="empty-state">No saved links yet. Generate and save your first link above.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="copied-toast" id="toast">Copied to clipboard!</div>
+
+  <script>
+    const BASE_URL = 'https://arcfoundry-ai.github.io/forge-intent-portal/';
+
+    function generateLink() {
+      const company = document.getElementById('company').value.trim();
+      const project = document.getElementById('project').value.trim() || company;
+      const domain = document.getElementById('domain').value.trim();
+      const respondent = document.getElementById('respondent').value.trim();
+      const phase = document.getElementById('phase').value;
+      const portal = document.getElementById('portal').value;
+
+      if (!company || !domain) {
+        alert('Please fill in at least Company and Domain Activity');
+        return;
+      }
+
+      const params = new URLSearchParams({
+        project: project,
+        domain: domain,
+        respondent: respondent,
+        phase: phase
+      });
+
+      const link = `${BASE_URL}${portal}?${params.toString()}`;
+
+      document.getElementById('generatedLink').value = link;
+      document.getElementById('linkCompany').textContent = company;
+      document.getElementById('linkOutput').classList.add('active');
+    }
+
+    function copyLink() {
+      const link = document.getElementById('generatedLink').value;
+      navigator.clipboard.writeText(link).then(() => {
+        showToast('Copied to clipboard!');
+      });
+    }
+
+    function openLink() {
+      const link = document.getElementById('generatedLink').value;
+      window.open(link, '_blank');
+    }
+
+    function saveLink() {
+      const company = document.getElementById('company').value.trim();
+      const link = document.getElementById('generatedLink').value;
+      const domain = document.getElementById('domain').value.trim();
+
+      if (!link) return;
+
+      const saved = JSON.parse(localStorage.getItem('forgeLinks') || '[]');
+      saved.push({
+        id: Date.now(),
+        company,
+        domain,
+        link,
+        created: new Date().toISOString()
+      });
+      localStorage.setItem('forgeLinks', JSON.stringify(saved));
+
+      renderSavedLinks();
+      showToast('Link saved!');
+    }
+
+    function deleteLink(id) {
+      const saved = JSON.parse(localStorage.getItem('forgeLinks') || '[]');
+      const filtered = saved.filter(l => l.id !== id);
+      localStorage.setItem('forgeLinks', JSON.stringify(filtered));
+      renderSavedLinks();
+    }
+
+    function copyFromSaved(link) {
+      navigator.clipboard.writeText(link).then(() => {
+        showToast('Copied to clipboard!');
+      });
+    }
+
+    function renderSavedLinks() {
+      const saved = JSON.parse(localStorage.getItem('forgeLinks') || '[]');
+      const container = document.getElementById('savedLinks');
+
+      if (saved.length === 0) {
+        container.innerHTML = '<div class="empty-state">No saved links yet. Generate and save your first link above.</div>';
+        return;
+      }
+
+      container.innerHTML = saved.map(l => `
+        <div class="saved-link">
+          <div class="saved-link-info">
+            <div class="saved-link-company">${escapeHtml(l.company)}</div>
+            <div class="saved-link-domain">${escapeHtml(l.domain.slice(0, 60))}${l.domain.length > 60 ? '...' : ''}</div>
+          </div>
+          <div class="saved-link-actions">
+            <button class="btn btn-secondary btn-sm" onclick="copyFromSaved('${escapeHtml(l.link)}')">Copy</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteLink(${l.id})">Delete</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+
+    // Load saved links on page load
+    renderSavedLinks();
+  </script>
+</body>
+</html>
