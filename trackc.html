@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Forge Intent — Interview Portal (Track C)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=DM+Serif+Display&display=swap" rel="stylesheet" />
+
+  <!-- Firebase SDK (optional - for tracking) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #root { height: 100%; }
+    body { font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-in { animation: fadeIn 0.35s ease-out; }
+    .slide-up { animation: slideUp 0.5s ease-out; }
+    textarea:focus, input:focus, select:focus { border-color: #1c1917 !important; outline: none; box-shadow: 0 0 0 3px rgba(28,25,23,0.08); }
+    button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    button:active:not(:disabled) { transform: translateY(0); }
+    button { transition: all 0.15s ease; }
+    @media (max-width: 600px) { .hide-mobile { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+
+// ═══════════════════════════════════════════════════════════════
+// FORGE INTENT INTERVIEW PORTAL — Track C (Firebase Tracked)
+// Token validation · Open tracking · Completion tracking
+// ═══════════════════════════════════════════════════════════════
+
+// Firebase config - UPDATE THESE VALUES for tracking to work
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+// Initialize Firebase (only if config is set)
+let db = null;
+try {
+  if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+  }
+} catch (e) {
+  console.log('Firebase not configured - running in standalone mode');
+}
+
+// ── TRACKING SERVICE ──
+const TrackingService = {
+  linkData: null,
+  sessionId: null,
+  linkId: null,
+  enabled: !!db,
+
+  async initialize() {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('t');
+
+    // Return URL params as fallback context
+    const urlContext = {
+      projectName: params.get('project') || 'Research Interview',
+      domainActivity: params.get('domain') || 'your experiences',
+      respondent: params.get('respondent') || '',
+      phase: params.get('phase') || 'Phase 1'
+    };
+
+    if (!token || !this.enabled) {
+      console.log('Running in standalone mode (no token or Firebase not configured)');
+      return { valid: true, standalone: true, ...urlContext };
+    }
+
+    try {
+      // Look up link by token
+      const snapshot = await db.collection('links')
+        .where('token', '==', token)
+        .limit(1)
+        .get();
+
+      if (snapshot.empty) {
+        return { valid: false, error: 'Invalid or expired link' };
+      }
+
+      const linkDoc = snapshot.docs[0];
+      this.linkData = linkDoc.data();
+      this.linkId = linkDoc.id;
+
+      // Mark as opened
+      if (this.linkData.status === 'sent' || this.linkData.status === 'created') {
+        await db.collection('links').doc(this.linkId).update({
+          status: 'opened',
+          openedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+
+      // Create session
+      const sessionRef = await db.collection('sessions').add({
+        linkId: this.linkId,
+        linkToken: token,
+        projectId: this.linkData.projectId,
+        projectName: this.linkData.projectName,
+        respondentName: this.linkData.respondentName,
+        status: 'in_progress',
+        startedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      this.sessionId = sessionRef.id;
+
+      return {
+        valid: true,
+        projectName: this.linkData.projectName || urlContext.projectName,
+        domainActivity: this.linkData.domainActivity || urlContext.domainActivity
+      };
+    } catch (error) {
+      console.error('Tracking init error:', error);
+      return { valid: true, standalone: true, ...urlContext };
+    }
+  },
+
+  async saveProgress(roundData) {
+    if (!this.sessionId || !this.enabled) return;
+    try {
+      await db.collection('sessions').doc(this.sessionId).update({
+        lastRound: roundData.roundNumber,
+        responses: firebase.firestore.FieldValue.arrayUnion(roundData),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    } catch (e) {
+      console.error('Save progress error:', e);
+    }
+  },
+
+  async complete(results) {
+    if (!this.enabled) return;
+    try {
+      if (this.sessionId) {
+        await db.collection('sessions').doc(this.sessionId).update({
+          status: 'completed',
+          completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          results
+        });
+      }
+      if (this.linkId) {
+        await db.collection('links').doc(this.linkId).update({
+          status: 'completed',
+          completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          sessionId: this.sessionId
+        });
+      }
+    } catch (e) {
+      console.error('Complete error:', e);
+    }
+  }
+};
+
+// ── GENERATION RULES ──
+const GENERATION_RULES = {
+  1: {
+    id: 1,
+    name: "Open Wide",
+    purpose: "Discover the experience with no assumptions",
+    questions: [
+      "Walk me through the last time you spent real time with this topic. What were you doing, and what were you hoping to get out of it?",
+      "Take me through the whole arc — from deciding to engage to where you are with it now. What were the stages?",
+      "In that journey, where did it fall short? What's the gap between what you hoped for and what actually happened?"
+    ]
+  },
+  2: {
+    id: 2,
+    name: "Surface the Gap",
+    pattern: "You mentioned that. Can you make that more specific? What exactly happened — or didn't happen?"
+  },
+  3: {
+    id: 3,
+    name: "First Why",
+    pattern: "What do you think caused that? What was missing?"
+  },
+  4: {
+    id: 4,
+    name: "Deeper Why",
+    pattern: "Why does that matter? What does that actually cost you?"
+  },
+  5: {
+    id: 5,
+    name: "Ideal State",
+    pattern: "If this worked perfectly for you, what would that look like?"
+  }
+};
+
+// ── MAIN APP ──
+function App() {
+  const [state, setState] = useState({
+    phase: 'loading',
+    projectName: '',
+    domainActivity: '',
+    rounds: [],
+    currentRound: 0
+  });
+
+  useEffect(() => {
+    initializePortal();
+  }, []);
+
+  const initializePortal = async () => {
+    const result = await TrackingService.initialize();
+
+    if (!result.valid) {
+      setState(s => ({ ...s, phase: 'invalid', error: result.error }));
+      return;
+    }
+
+    setState(s => ({
+      ...s,
+      phase: 'welcome',
+      projectName: result.projectName,
+      domainActivity: result.domainActivity
+    }));
+  };
+
+  const startInterview = () => {
+    // Customize first question with domain activity
+    const customQuestions = GENERATION_RULES[1].questions.map((q, i) => {
+      if (i === 0) {
+        return `Walk me through the last time you ${state.domainActivity}. What were you doing, and what were you hoping to get out of it?`;
+      }
+      return q;
+    });
+
+    setState(s => ({
+      ...s,
+      phase: 'interview',
+      currentRound: 1,
+      rounds: [{
+        number: 1,
+        rule: GENERATION_RULES[1],
+        questions: customQuestions,
+        responses: [],
+        currentQuestion: 0
+      }]
+    }));
+  };
+
+  const handleResponse = async (response) => {
+    const currentRound = state.rounds[state.rounds.length - 1];
+    const newResponses = [...currentRound.responses, response];
+
+    await TrackingService.saveProgress({
+      roundNumber: currentRound.number,
+      questionIndex: currentRound.currentQuestion,
+      question: currentRound.questions[currentRound.currentQuestion],
+      response
+    });
+
+    if (currentRound.currentQuestion < currentRound.questions.length - 1) {
+      setState(s => ({
+        ...s,
+        rounds: s.rounds.map((r, i) =>
+          i === s.rounds.length - 1
+            ? { ...r, responses: newResponses, currentQuestion: r.currentQuestion + 1 }
+            : r
+        )
+      }));
+    } else {
+      if (state.currentRound >= 3) {
+        await completeInterview(newResponses);
+      } else {
+        const nextRoundNum = state.currentRound + 1;
+        const nextRule = GENERATION_RULES[nextRoundNum + 1] || GENERATION_RULES[2];
+        const followUp = nextRule.pattern || "Tell me more about that experience.";
+
+        setState(s => ({
+          ...s,
+          currentRound: nextRoundNum,
+          rounds: [
+            ...s.rounds.slice(0, -1),
+            { ...currentRound, responses: newResponses },
+            {
+              number: nextRoundNum,
+              rule: nextRule,
+              questions: [followUp],
+              responses: [],
+              currentQuestion: 0
+            }
+          ]
+        }));
+      }
+    }
+  };
+
+  const completeInterview = async (finalResponses) => {
+    const allResponses = state.rounds.flatMap(r =>
+      r.responses.map((resp, i) => ({
+        round: r.number,
+        question: r.questions[i],
+        response: resp
+      }))
+    );
+    allResponses.push({
+      round: state.currentRound,
+      question: state.rounds[state.rounds.length - 1].questions[state.rounds[state.rounds.length - 1].currentQuestion],
+      response: finalResponses[finalResponses.length - 1]
+    });
+
+    await TrackingService.complete({
+      totalRounds: state.rounds.length,
+      totalResponses: allResponses.length,
+      projectName: state.projectName,
+      responses: allResponses
+    });
+
+    setState(s => ({
+      ...s,
+      phase: 'complete',
+      allResponses
+    }));
+  };
+
+  if (state.phase === 'loading') return <LoadingScreen />;
+  if (state.phase === 'invalid') return <InvalidScreen error={state.error} />;
+  if (state.phase === 'welcome') return <WelcomeScreen projectName={state.projectName} domainActivity={state.domainActivity} onStart={startInterview} />;
+  if (state.phase === 'interview') {
+    const currentRound = state.rounds[state.rounds.length - 1];
+    return <InterviewScreen round={currentRound} totalRounds={state.currentRound} onResponse={handleResponse} projectName={state.projectName} />;
+  }
+  if (state.phase === 'complete') return <CompleteScreen projectName={state.projectName} responses={state.allResponses} />;
+  return null;
+}
+
+// ── SCREENS ──
+
+function LoadingScreen() {
+  return (
+    <div style={styles.container}>
+      <div style={styles.centered}>
+        <div style={styles.spinner}></div>
+        <p style={{ color: '#78716c', fontSize: '14px' }}>Preparing your interview...</p>
+      </div>
+    </div>
+  );
+}
+
+function InvalidScreen({ error }) {
+  return (
+    <div style={styles.container}>
+      <div style={styles.card}>
+        <h1 style={styles.title}>Link Invalid</h1>
+        <p style={styles.subtitle}>{error || 'This interview link is invalid or has expired.'}</p>
+        <p style={{ fontSize: '14px', color: '#78716c', marginTop: '16px' }}>
+          Please contact the person who sent you this link for a new one.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function WelcomeScreen({ projectName, domainActivity, onStart }) {
+  return (
+    <div style={styles.container} className="fade-in">
+      <div style={styles.card}>
+        <div style={styles.logo}>Forge <span style={{ color: '#22c55e' }}>Intent</span></div>
+        <h1 style={styles.title}>{projectName}</h1>
+        <p style={styles.subtitle}>
+          We'd love to hear about your experiences when you've {domainActivity}.
+        </p>
+        <div style={styles.infoBox}>
+          <p style={{ fontSize: '14px', color: '#78716c', lineHeight: '1.6', margin: 0 }}>
+            This interview typically takes 10-15 minutes. Your responses help us understand real experiences and build better products.
+          </p>
+        </div>
+        <button style={styles.primaryButton} onClick={onStart}>
+          Start Interview
+        </button>
+        <p style={{ fontSize: '12px', color: '#a8a29e', margin: 0 }}>
+          Your responses are confidential and used only for research purposes.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function InterviewScreen({ round, totalRounds, onResponse, projectName }) {
+  const [response, setResponse] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, [round.currentQuestion]);
+
+  const handleSubmit = async () => {
+    if (!response.trim() || isSubmitting) return;
+    setIsSubmitting(true);
+    await onResponse(response.trim());
+    setResponse('');
+    setIsSubmitting(false);
+  };
+
+  const currentQuestion = round.questions[round.currentQuestion];
+  const progress = ((totalRounds - 1) * 3 + round.currentQuestion + 1) / 9 * 100;
+
+  return (
+    <div style={styles.container}>
+      <div style={styles.interviewCard} className="fade-in">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <span style={{ fontSize: '14px', fontWeight: '500', color: '#78716c' }}>{projectName}</span>
+          <span style={{ background: '#22c55e15', color: '#22c55e', padding: '4px 12px', borderRadius: '9999px', fontSize: '12px', fontWeight: '600' }}>
+            Round {totalRounds}
+          </span>
+        </div>
+
+        <div style={{ height: '4px', background: '#e7e5e4', borderRadius: '2px', marginBottom: '32px', overflow: 'hidden' }}>
+          <div style={{ height: '100%', background: '#22c55e', borderRadius: '2px', width: `${Math.min(progress, 100)}%`, transition: 'width 0.3s ease' }}></div>
+        </div>
+
+        <div style={{ marginBottom: '24px' }}>
+          <p style={{ fontSize: '20px', fontWeight: '500', color: '#1c1917', lineHeight: '1.5' }}>{currentQuestion}</p>
+        </div>
+
+        <div style={{ marginBottom: '24px' }}>
+          <textarea
+            ref={textareaRef}
+            style={styles.textarea}
+            value={response}
+            onChange={(e) => setResponse(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && e.metaKey) handleSubmit(); }}
+            placeholder="Share your thoughts..."
+            rows={5}
+            disabled={isSubmitting}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '12px', color: '#a8a29e' }}>
+            <span>{response.length} characters</span>
+            <span>⌘ + Enter to submit</span>
+          </div>
+        </div>
+
+        <button
+          style={{ ...styles.primaryButton, opacity: !response.trim() || isSubmitting ? 0.5 : 1, cursor: !response.trim() || isSubmitting ? 'not-allowed' : 'pointer' }}
+          onClick={handleSubmit}
+          disabled={!response.trim() || isSubmitting}
+        >
+          {isSubmitting ? 'Saving...' : 'Continue'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CompleteScreen({ projectName, responses }) {
+  return (
+    <div style={styles.container} className="fade-in">
+      <div style={styles.card}>
+        <div style={{ width: '64px', height: '64px', background: '#22c55e', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px', color: '#fff', margin: '0 auto 24px' }}>✓</div>
+        <h1 style={styles.title}>Interview Complete</h1>
+        <p style={styles.subtitle}>
+          Thank you for sharing your experiences with {projectName}.
+        </p>
+        <div style={{ background: '#f5f5f4', borderRadius: '12px', padding: '20px', marginBottom: '24px', textAlign: 'left' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#1c1917', marginBottom: '8px' }}>Your Session</h3>
+          <p style={{ fontSize: '14px', color: '#57534e', lineHeight: '1.6', margin: 0 }}>
+            You provided {responses?.length || 0} responses across multiple rounds.
+            Your insights will help shape better solutions.
+          </p>
+        </div>
+        <p style={{ fontSize: '12px', color: '#a8a29e', margin: 0 }}>
+          You can now close this window. Your responses have been saved.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── STYLES ──
+const styles = {
+  container: {
+    minHeight: '100vh',
+    background: 'linear-gradient(180deg, #fafaf9 0%, #f5f5f4 100%)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '24px'
+  },
+  centered: { textAlign: 'center' },
+  card: {
+    background: '#fff',
+    borderRadius: '16px',
+    padding: '48px 40px',
+    maxWidth: '500px',
+    width: '100%',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+    textAlign: 'center'
+  },
+  interviewCard: {
+    background: '#fff',
+    borderRadius: '16px',
+    padding: '32px',
+    maxWidth: '640px',
+    width: '100%',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.08)'
+  },
+  logo: { fontSize: '20px', fontWeight: '700', marginBottom: '24px', color: '#1c1917' },
+  title: { fontSize: '28px', fontWeight: '700', color: '#1c1917', marginBottom: '12px' },
+  subtitle: { fontSize: '16px', color: '#57534e', lineHeight: '1.6', marginBottom: '24px' },
+  infoBox: { background: '#f5f5f4', borderRadius: '12px', padding: '20px', marginBottom: '24px' },
+  primaryButton: {
+    background: '#1c1917',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '10px',
+    padding: '16px 32px',
+    fontSize: '16px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    width: '100%',
+    marginBottom: '16px'
+  },
+  textarea: {
+    width: '100%',
+    padding: '16px',
+    border: '1px solid #e7e5e4',
+    borderRadius: '12px',
+    fontSize: '16px',
+    fontFamily: 'inherit',
+    resize: 'vertical',
+    minHeight: '120px',
+    lineHeight: '1.6'
+  },
+  spinner: {
+    width: '32px',
+    height: '32px',
+    border: '3px solid #e7e5e4',
+    borderTopColor: '#22c55e',
+    borderRadius: '50%',
+    animation: 'spin 0.8s linear infinite',
+    margin: '0 auto 16px'
+  }
+};
+
+// Add spinner keyframes
+const styleSheet = document.createElement('style');
+styleSheet.textContent = `@keyframes spin { to { transform: rotate(360deg); } }`;
+document.head.appendChild(styleSheet);
+
+// ── RENDER ──
+ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
